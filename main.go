@@ -1,89 +1,85 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/binary"
+	"fmt"
 	"log"
+	"strings"
 
-	"github.com/tarm/serial"
+	"github.com/knieriem/serport"
 )
 
 func main() {
 
-	// Configure and connect to Serial Port
-	c := &serial.Config{Name: "/dev/ttyACM0", Baud: 115200}
-	s, err := serial.OpenPort(c)
+	// Open Serial Port
+	port, name, err := serport.Choose("", "b115200")
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("# connected to", name)
 
-	// n, err := s.Write([]byte("test"))
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	// Create a new Scanner
+	stream := bufio.NewScanner(port)
 
-	// Create a buffer for our use
-	var b bytes.Buffer
-
-	// Loop reading data as it appears
-	for {
-		part := make([]byte, 135)
-		_, err := s.Read(part)
-		b.Write(part)
-
-		if err != nil {
-			log.Fatal(err)
+	// Read data and process
+	for stream.Scan() {
+		// Get this packet
+		s := stream.Text()
+		// deal with this packet being corrupt
+		if i := strings.Index(s, "***"); i == -1 {
+			continue
+		}
+		// Trim data if garbage ahead of *** start
+		if i := strings.Index(s, "***"); i > 0 {
+			s = s[i:]
+		}
+		// Trim prefix
+		s = strings.TrimPrefix(s, "***")
+		// Exit if length is wrong
+		if len(s) != 130 {
+			continue
 		}
 
-		x := bytes.Index(b.Bytes(), []byte("\r\n"))
+		// Get Thermister bytes
+		var thermistor float32
+		hb := []byte(s[:2])
+		if !(hb[1]&0b00001000 == 0) {
+			hb[1] &= 0b00000111
+			// Convert to Float and multiple by constant
+			thermistor = float32(binary.LittleEndian.Uint16(hb)) * -0.0125
+		} else {
+			// Convert to Float and multiple by constant
+			thermistor = float32(binary.LittleEndian.Uint16(hb)) * 0.0125
+		}
+		// Log Out
+		log.Println("Internal Temp:", thermistor)
 
-		if x >= 0 {
-			l := bytes.TrimPrefix(b.Bytes(), []byte("\r\n"))
-			b.Reset()
-
-			if bytes.Compare(l[:3], []byte("***")) == 0 {
-				log.Printf("Head Matched: %x", l[0:5])
-
-				// Process Thermister Value (internal Heat Temp Sensor?)
-				// Appears to be 12bit signed
-				// 0000 0000 000x XXXX
-				// Where 0000 0000 000: Value
-				// Where x: 0=Positive, 1=Negative
-				// Where XXXX: Ignore
-
-				// Copying from a Python codeset supplied with the Grid-EYE
-				// Value Multiplier 0.0125
-				var t float64
-				tb := l[3:5]
-				if tb[1]&8 == 8 {
-					tb[1] = tb[1] + 7
-					t = float64(binary.LittleEndian.Uint16(tb)) * -0.0125
-				} else {
-					t = float64(binary.LittleEndian.Uint16(tb)) * 0.0125
-				}
-				log.Printf("Temp: %f", t)
-
-				// Process Pixels
-
+		// Get Pixel bytes
+		s = s[2:]
+		// Process Pixels
+		px := [64]float32{}
+		for i := 0; i < 64; i++ {
+			// Get relevant bytes
+			t := []byte(s[i*2 : i*2+2])
+			// If second byte is not zero, turn on bits 12-16 to convert to
+			// twos compliment
+			//fmt.Printf("%08b\n", t)
+			if !(t[1]&0b00001000 == 0) {
+				t[1] |= 0b00000111
 			}
+			// if t[1]&8 == 0 {
+			// 	t[1] = t[1] + 248
+			// }
+			// Convert to Twos compliment
+			x := binary.LittleEndian.Uint16(t)
+			// Convert to Float and multiple by constant
+			px[i] = float32(x) * 0.25
+
 		}
-
-		// Process if we have full data packet
-		// if b. {
-
-		// 	// Output number of bytes read
-		// 	log.Printf("Data Size: %d", n)
-
-		// 	// Entire Read Data
-		// 	log.Printf("RawData: %q", buffer[:n])
-
-		// 	// Command Head
-		// 	head := buffer[:3]
-
-		// 	log.Printf("Data Head: %q", head)
-		// 	// Clear out for next round
-		// 	buffer = buffer[:0]
-		// 	log.Println()
-		// }
+		// Output values
+		log.Println(px)
 	}
+
+	log.Println("Exiting")
 }
