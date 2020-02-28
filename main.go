@@ -67,10 +67,15 @@ func main() {
 			// Get Pixel bytes
 			s = s[2:]
 			// Process Pixels
+			// Actual device is in form:
+			// 64...57
+			// 08...01
 			for y := 0; y < 8; y++ {
 				for x := 0; x < 8; x++ {
+					// Get current index
+					i := 63 - (x + (8 * y))
 					// Get relevant bytes
-					t := []byte(s[y*x*2 : y*x*2+2])
+					t := []byte(s[i*2 : i*2+2])
 					// If second byte is not zero, turn on bits 12-16 to convert to
 					// twos compliment
 					if !(t[1]&0b00001000 == 0) {
@@ -91,6 +96,7 @@ func main() {
 		if err != nil {
 			log.Fatal("Cannot encode to JSON ", err)
 		}
+		fmt.Println(string(px))
 		w.Write(px)
 	})
 
