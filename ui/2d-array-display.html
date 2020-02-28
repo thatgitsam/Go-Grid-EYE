@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+    }
+
+    #app {
+      align-items: center;
+      background-color: black;
+      display: flex;
+      height: 100vh;
+      justify-content: center;
+    }
+
+    #grid {
+      display: grid;
+      gap: 1px;
+      height: 50vmin;
+      width: 50vmin;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <div id="grid">
+      <template v-for="row in values">
+        <div v-for="value in row" :style="{ backgroundColor: getColor(value) }"></div>
+      </template>
+    </div>
+  </div>
+
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        maxValue: 40,
+        minValue: 0,
+        pollIntervalId: 0,
+        values: []
+      },
+      created() {
+        this.pollIntervalId = setInterval(() => this.getValues(), 33);
+      },
+      methods: {
+        getColor(value) {
+          const rgb = 255 * value / (this.maxValue - this.minValue);
+          return `rgb(${rgb}, ${rgb}, ${rgb})`;
+        },
+        async getValues() {
+          let values;
+
+          try {
+            res = await fetch('http://localhost:8080/data');
+            values = await res.json();
+          } catch (e) {
+            console.error(e);
+            clearInterval(this.pollIntervalId);
+            this.setDefaultValues();
+            return;
+          }
+
+          this.values = values;
+          this.setGridDimensions(values.length, values[0].length);
+        },
+        setDefaultValues() {
+          this.values = [
+            [10, 20, 30],
+            [20, 40, 20],
+            [30, 20, 10]
+          ];
+
+          this.setGridDimensions(3, 3);
+        },
+        setGridDimensions(rows, cols) {
+          document.getElementById(
+            'grid'
+          ).style.grid = `repeat(${rows}, 1fr) / repeat(${cols}, 1fr)`;
+        }
+      }
+    });
+  </script>
+</body>
+
+</html>
